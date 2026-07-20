@@ -407,12 +407,20 @@ def get_sa_credentials():
     # Try Streamlit Cloud secrets first
     try:
         if hasattr(st, 'secrets') and 'ga4' in st.secrets and 'credentials' in st.secrets['ga4']:
-            # Use json.loads(json.dumps(...)) to deep-convert Streamlit AttrDict to plain dict
-            import json
-            creds_info = json.loads(json.dumps(dict(st.secrets["ga4"]["credentials"])))
-            # Ensure private_key newlines are actual newlines
-            if 'private_key' in creds_info:
-                creds_info['private_key'] = creds_info['private_key'].replace('\\n', '\n')
+            sa = st.secrets["ga4"]["credentials"]
+            # Explicitly cast each field to str to avoid Streamlit AttrDict serialization issues
+            creds_info = {
+                "type": str(sa.get("type", "service_account")),
+                "project_id": str(sa["project_id"]),
+                "private_key_id": str(sa["private_key_id"]),
+                "private_key": str(sa["private_key"]).replace('\\n', '\n'),
+                "client_email": str(sa["client_email"]),
+                "client_id": str(sa["client_id"]),
+                "auth_uri": str(sa.get("auth_uri", "https://accounts.google.com/o/oauth2/auth")),
+                "token_uri": str(sa.get("token_uri", "https://oauth2.googleapis.com/token")),
+                "auth_provider_x509_cert_url": str(sa.get("auth_provider_x509_cert_url", "https://www.googleapis.com/oauth2/v1/certs")),
+                "client_x509_cert_url": str(sa.get("client_x509_cert_url", "")),
+            }
             return service_account.Credentials.from_service_account_info(creds_info, scopes=SCOPES)
     except Exception as e:
         st.error(f"Cloud credentials error: {e}")
