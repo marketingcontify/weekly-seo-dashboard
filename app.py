@@ -593,6 +593,8 @@ def fetch_gsc(_ct, site_url, start, end, dim='page'):
 def _get_creds():
     # On cloud, load OAuth token from secrets
     if _is_cloud():
+        # --- Try OAuth token ---
+        oauth_err = None
         try:
             import base64
             if hasattr(st, 'secrets') and 'oauth' in st.secrets and 'token_b64' in st.secrets['oauth']:
@@ -603,14 +605,40 @@ def _get_creds():
                     creds.refresh(Request())
                 if creds and creds.valid:
                     return creds
-                st.error("Cloud OAuth error: token is invalid or could not be refreshed. Falling back to service account.")
+                oauth_err = f"token valid={getattr(creds,'valid',None)} expired={getattr(creds,'expired',None)}"
+            else:
+                oauth_err = "oauth secret not found in st.secrets"
         except Exception as e:
-            st.error(f"Cloud OAuth error: {e}")
-        creds = get_sa_credentials()
-        if creds is None:
-            st.error("No valid credentials found. Please update the OAuth token in Streamlit secrets.")
-            st.stop()
-        return creds
+            oauth_err = str(e)
+
+        # --- Try service account ---
+        sa_err = None
+        try:
+            from google.oauth2 import service_account
+            if hasattr(st, 'secrets') and 'ga4' in st.secrets and 'credentials' in st.secrets['ga4']:
+                sa = st.secrets["ga4"]["credentials"]
+                creds_info = {
+                    "type": str(sa.get("type", "service_account")),
+                    "project_id": str(sa["project_id"]),
+                    "private_key_id": str(sa["private_key_id"]),
+                    "private_key": str(sa["private_key"]).replace('\\n', '\n'),
+                    "client_email": str(sa["client_email"]),
+                    "client_id": str(sa["client_id"]),
+                    "auth_uri": str(sa.get("auth_uri", "https://accounts.google.com/o/oauth2/auth")),
+                    "token_uri": str(sa.get("token_uri", "https://oauth2.googleapis.com/token")),
+                    "auth_provider_x509_cert_url": str(sa.get("auth_provider_x509_cert_url", "https://www.googleapis.com/oauth2/v1/certs")),
+                    "client_x509_cert_url": str(sa.get("client_x509_cert_url", "")),
+                }
+                creds = service_account.Credentials.from_service_account_info(creds_info, scopes=SCOPES)
+                return creds
+            else:
+                sa_err = "ga4.credentials not found in st.secrets"
+        except Exception as e:
+            sa_err = str(e)
+
+        st.error(f"OAuth failed: {oauth_err}")
+        st.error(f"Service account failed: {sa_err}")
+        st.stop()
     if os.path.exists(TOKEN_FILE):
         with open(TOKEN_FILE, 'rb') as f: creds = pickle.load(f)
         if creds and creds.expired and creds.refresh_token:
