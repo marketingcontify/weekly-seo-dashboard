@@ -407,7 +407,9 @@ def get_sa_credentials():
     # Try Streamlit Cloud secrets first
     try:
         if hasattr(st, 'secrets') and 'ga4' in st.secrets and 'credentials' in st.secrets['ga4']:
-            creds_info = dict(st.secrets["ga4"]["credentials"])
+            # Use json.loads(json.dumps(...)) to deep-convert Streamlit AttrDict to plain dict
+            import json
+            creds_info = json.loads(json.dumps(dict(st.secrets["ga4"]["credentials"])))
             # Ensure private_key newlines are actual newlines
             if 'private_key' in creds_info:
                 creds_info['private_key'] = creds_info['private_key'].replace('\\n', '\n')
@@ -591,10 +593,16 @@ def _get_creds():
                 if creds and creds.expired and creds.refresh_token:
                     from google.auth.transport.requests import Request
                     creds.refresh(Request())
-                return creds
+                if creds and creds.valid:
+                    return creds
+                st.error("Cloud OAuth error: token is invalid or could not be refreshed. Falling back to service account.")
         except Exception as e:
             st.error(f"Cloud OAuth error: {e}")
-        return get_sa_credentials()
+        creds = get_sa_credentials()
+        if creds is None:
+            st.error("No valid credentials found. Please update the OAuth token in Streamlit secrets.")
+            st.stop()
+        return creds
     if os.path.exists(TOKEN_FILE):
         with open(TOKEN_FILE, 'rb') as f: creds = pickle.load(f)
         if creds and creds.expired and creds.refresh_token:
