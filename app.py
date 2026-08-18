@@ -590,6 +590,24 @@ def fetch_gsc(_ct, site_url, start, end, dim='page'):
         rows.append({dim.capitalize(): row['keys'][0], 'Date': row['keys'][1], 'Clicks': row['clicks'], 'Impressions': row['impressions'], 'CTR': row['ctr']*100, 'Position': row['position']})
     return pd.DataFrame(rows)
 
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_gsc_branded(_ct, site_url, start, end, brand_term='contify'):
+    """Fetch GSC query data and split into branded vs non-branded by week."""
+    from googleapiclient.discovery import build
+    creds = _get_creds()
+    svc = build('searchconsole', 'v1', credentials=creds)
+    resp = svc.searchanalytics().query(siteUrl=site_url, body={
+        'startDate': start, 'endDate': end,
+        'dimensions': ['query', 'date'], 'rowLimit': 25000
+    }).execute()
+    rows = []
+    for row in resp.get('rows', []):
+        query, date = row['keys'][0], row['keys'][1]
+        rows.append({'Query': query, 'Date': date, 'Clicks': row['clicks'],
+                     'Impressions': row['impressions'], 'CTR': row['ctr'] * 100, 'Position': row['position'],
+                     'Type': 'Branded' if brand_term.lower() in query.lower() else 'Non-branded'})
+    return pd.DataFrame(rows) if rows else pd.DataFrame()
+
 def _get_creds():
     # On cloud, load OAuth token from secrets
     if _is_cloud():
@@ -1722,6 +1740,116 @@ us_cur = us_org[us_org.Week_Idx==cur_idx]['Sessions'].sum()
 us_prev = us_org[us_org.Week_Idx==prev_idx]['Sessions'].sum()
 insight_box([f'US organic traffic: {fmt(us_cur)} sessions ({change_html(pct_change(us_cur, us_prev))})',
              f'Top page: <strong>{us_pages.iloc[0]["Page"]}</strong> with {fmt(us_pages.iloc[0]["Sessions"])} sessions' if len(us_pages) else ''], section_key="us_organic")
+section_end()
+
+# =====================================================
+# BRANDED VS NON-BRANDED (GSC)
+# =====================================================
+section_start("Branded vs Non-Branded Clicks & Impressions (GSC)", "🔍")
+if auth_method == 'demo':
+    # Demo data
+    demo_branded = []
+    for i, (m, s, lbl) in enumerate(weeks):
+        demo_branded.append({'Week_Label': lbl, 'Week_Idx': i, 'Type': 'Branded',
+                             'Clicks': [244,269,332,231,210][i % 5], 'Impressions': [1177,1166,1441,1078,1100][i % 5]})
+        demo_branded.append({'Week_Label': lbl, 'Week_Idx': i, 'Type': 'Non-branded',
+                             'Clicks': [55,44,63,79,60][i % 5], 'Impressions': [163713,162677,164803,124557,140000][i % 5]})
+    gsc_branded_df = pd.DataFrame(demo_branded)
+else:
+    try:
+        raw = fetch_gsc_branded(full_start + full_end, config['gsc_site'], full_start, full_end)
+        if raw.empty:
+            st.info("No GSC query data available yet.")
+            gsc_branded_df = pd.DataFrame()
+        else:
+            raw = assign_weeks(raw, weeks, date_col='Date', date_fmt='%Y-%m-%d')
+            gsc_branded_df = raw.groupby(['Week_Label','Week_Idx','Type']).agg(
+                Clicks=('Clicks','sum'), Impressions=('Impressions','sum')).reset_index()
+    except Exception as e:
+        st.error(f"GSC branded data error: {e}")
+        gsc_branded_df = pd.DataFrame()
+
+if not gsc_branded_df.empty:
+    week_order = [w[2] for w in weeks]
+    gsc_branded_df['Week_Label'] = pd.Categorical(gsc_branded_df['Week_Label'], categories=week_order, ordered=True)
+    gsc_branded_df = gsc_branded_df.sort_values('Week_Idx')
+
+    col1, col2 = st.columns(2)
+    with col1:
+        clicks_df = gsc_branded_df.pivot(index='Week_Label', columns='Type', values='Clicks').reset_index()
+        fig_clicks = go.Figure()
+        colors = {'Branded': '#1a56db', 'Non-branded': '#ef4444'}
+        for t in ['Branded', 'Non-branded']:
+            if t in clicks_df.columns:
+                fig_clicks.add_trace(go.Bar(
+                    name=f'{t} Clicks', x=clicks_df['Week_Label'], y=clicks_df[t],
+                    marker_color=colors[t], text=clicks_df[t].apply(lambda v: f'{int(v):,}'),
+                    textposition='outside'))
+        fig_clicks.update_layout(
+            title='Branded vs Non-Branded Clicks', barmode='group', height=380,
+            plot_bgcolor='white', paper_bgcolor='white',
+            font=dict(family='Inter', size=12), legend=dict(orientation='h', y=-0.2),
+            xaxis=dict(title=None, gridcolor='#f0f0f0'),
+            yaxis=dict(title=None, gridcolor='#f0f0f0', rangemode='tozero'),
+            margin=dict(t=60, b=60, l=40, r=20))
+        st.plotly_chart(fig_clicks, use_container_width=True)
+
+    with col2:
+        impr_df = gsc_branded_df.pivot(index='Week_Label', columns='Type', values='Impressions').reset_index()
+        fig_impr = go.Figure()
+        for t in ['Branded', 'Non-branded']:
+            if t in impr_df.columns:
+                fig_impr.add_trace(go.Bar(
+                    name=f'{t} Impressions', x=impr_df['Week_Label'], y=impr_df[t],
+                    marker_color=colors[t],
+                    text=impr_df[t].apply(lambda v: f'{int(v):,}'),
+                    textposition='outside'))
+        fig_impr.update_layout(
+            title='Branded vs Non-Branded Impressions', barmode='group', height=380,
+            plot_bgcolor='white', paper_bgcolor='white',
+            font=dict(family='Inter', size=12), legend=dict(orientation='h', y=-0.2),
+            xaxis=dict(title=None, gridcolor='#f0f0f0'),
+            yaxis=dict(title=None, gridcolor='#f0f0f0', rangemode='tozero',
+                       tickformat=',.0f'),
+            margin=dict(t=60, b=60, l=40, r=20))
+        st.plotly_chart(fig_impr, use_container_width=True)
+
+    # Summary table
+    cur_b = gsc_branded_df[gsc_branded_df['Week_Idx'] == cur_idx]
+    prev_b = gsc_branded_df[gsc_branded_df['Week_Idx'] == prev_idx]
+    def _gsc_val(df, t, col):
+        r = df[df['Type'] == t]
+        return int(r[col].sum()) if not r.empty else 0
+
+    branded_clicks_cur = _gsc_val(cur_b, 'Branded', 'Clicks')
+    nonbranded_clicks_cur = _gsc_val(cur_b, 'Non-branded', 'Clicks')
+    branded_clicks_prev = _gsc_val(prev_b, 'Branded', 'Clicks')
+    nonbranded_clicks_prev = _gsc_val(prev_b, 'Non-branded', 'Clicks')
+    branded_impr_cur = _gsc_val(cur_b, 'Branded', 'Impressions')
+    nonbranded_impr_cur = _gsc_val(cur_b, 'Non-branded', 'Impressions')
+    branded_impr_prev = _gsc_val(prev_b, 'Branded', 'Impressions')
+    nonbranded_impr_prev = _gsc_val(prev_b, 'Non-branded', 'Impressions')
+
+    rows_html = ""
+    for label, cur_c, prev_c, cur_i, prev_i in [
+        ('Branded', branded_clicks_cur, branded_clicks_prev, branded_impr_cur, branded_impr_prev),
+        ('Non-branded', nonbranded_clicks_cur, nonbranded_clicks_prev, nonbranded_impr_cur, nonbranded_impr_prev),
+    ]:
+        cc = pct_change(cur_c, prev_c); ic = pct_change(cur_i, prev_i)
+        rows_html += (f"<tr><td><strong>{label}</strong></td>"
+                      f"<td>{fmt(cur_c)}</td><td>{fmt(prev_c)}</td><td>{change_html(cc)}</td>"
+                      f"<td>{fmt(cur_i)}</td><td>{fmt(prev_i)}</td><td>{change_html(ic)}</td></tr>")
+    st.markdown(f"""<table class="kpi-table">
+        <tr><th>Type</th><th>Clicks (This Wk)</th><th>Clicks (Prev Wk)</th><th>Change</th>
+        <th>Impressions (This Wk)</th><th>Impressions (Prev Wk)</th><th>Change</th></tr>
+        {rows_html}</table>""", unsafe_allow_html=True)
+
+    branded_pct = (branded_clicks_cur / (branded_clicks_cur + nonbranded_clicks_cur) * 100) if (branded_clicks_cur + nonbranded_clicks_cur) > 0 else 0
+    insight_box([
+        f"Branded clicks this week: <strong>{fmt(branded_clicks_cur)}</strong> ({branded_pct:.0f}% of total) {change_html(pct_change(branded_clicks_cur, branded_clicks_prev))} vs last week",
+        f"Non-branded clicks this week: <strong>{fmt(nonbranded_clicks_cur)}</strong> {change_html(pct_change(nonbranded_clicks_cur, nonbranded_clicks_prev))} vs last week",
+        f"Non-branded impressions: <strong>{fmt(nonbranded_impr_cur)}</strong> — indicates organic visibility beyond brand searches",
+    ], section_key='gsc_branded')
 section_end()
 
 # =====================================================
