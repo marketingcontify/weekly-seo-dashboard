@@ -7,6 +7,7 @@ import json
 import os
 import pickle
 import numpy as np
+import re
 
 CONTIFY_LOGO = "https://www.contify.com/wp-content/uploads/2026/02/contify-logo.svg"
 st.set_page_config(page_title="Contify SEO Weekly Review", page_icon=CONTIFY_LOGO,
@@ -590,9 +591,11 @@ def fetch_gsc(_ct, site_url, start, end, dim='page'):
         rows.append({dim.capitalize(): row['keys'][0], 'Date': row['keys'][1], 'Clicks': row['clicks'], 'Impressions': row['impressions'], 'CTR': row['ctr']*100, 'Position': row['position']})
     return pd.DataFrame(rows)
 
+BRAND_REGEX = re.compile(r'\b(contif[a-z]*|comtify|contigy|kontify|contfy|contrify|confify|comptify|cantify)\b', re.IGNORECASE)
+
 @st.cache_data(ttl=600, show_spinner=False)
-def fetch_gsc_branded(_ct, site_url, start, end, brand_term='contify'):
-    """Fetch GSC query data and split into branded vs non-branded by week."""
+def fetch_gsc_branded(_ct, site_url, start, end):
+    """Fetch GSC query data and split into branded vs non-branded using brand regex."""
     from googleapiclient.discovery import build
     creds = _get_creds()
     svc = build('searchconsole', 'v1', credentials=creds)
@@ -605,7 +608,7 @@ def fetch_gsc_branded(_ct, site_url, start, end, brand_term='contify'):
         query, date = row['keys'][0], row['keys'][1]
         rows.append({'Query': query, 'Date': date, 'Clicks': row['clicks'],
                      'Impressions': row['impressions'], 'CTR': row['ctr'] * 100, 'Position': row['position'],
-                     'Type': 'Branded' if brand_term.lower() in query.lower() else 'Non-branded'})
+                     'Type': 'Branded' if BRAND_REGEX.search(query) else 'Non-branded'})
     return pd.DataFrame(rows) if rows else pd.DataFrame()
 
 def _get_creds():
