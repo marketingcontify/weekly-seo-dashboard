@@ -780,11 +780,12 @@ def pct_change(cur, prev):
     if prev == 0: return 0
     return ((cur - prev) / prev) * 100
 
-def change_html(val, fmt_str="+.1f", suffix="%", invert=False):
+def change_html(val, fmt_str=".1f", suffix="%", invert=False):
     positive = val >= 0 if not invert else val <= 0
     cls = "pos" if positive else "neg"
     arrow = "▲" if val > 0 else ("▼" if val < 0 else "–")
-    return f'<span class="{cls}">{arrow} {abs(val):{fmt_str}}{suffix}</span>'
+    sign = "+" if val > 0 else ("-" if val < 0 else "")
+    return f'<span class="{cls}">{arrow} {sign}{abs(val):{fmt_str}}{suffix}</span>'
 
 def _strip_html_inline(text):
     import re
