@@ -604,7 +604,7 @@ def fetch_gsc_branded(_ct, site_url, start, end):
     creds = _get_creds()
     svc = build('searchconsole', 'v1', credentials=creds)
 
-    # 1. Query-level data for clicks + branded classification
+    # 1. Query-level data for clicks + impressions + branded classification
     resp_q = svc.searchanalytics().query(siteUrl=site_url, body={
         'startDate': start, 'endDate': end,
         'dimensions': ['query', 'date'], 'rowLimit': 25000
@@ -612,14 +612,14 @@ def fetch_gsc_branded(_ct, site_url, start, end):
     query_rows = []
     for row in resp_q.get('rows', []):
         query, date = row['keys'][0], row['keys'][1]
-        query_rows.append({'Date': date, 'Clicks': row['clicks'],
+        query_rows.append({'Date': date, 'Clicks': row['clicks'], 'Impressions': row['impressions'],
                            'Type': 'Branded' if BRAND_REGEX.search(query) else 'Non-branded'})
     if not query_rows:
         return pd.DataFrame()
     df_q = pd.DataFrame(query_rows)
-    clicks_by_day = df_q.groupby(['Date', 'Type'])['Clicks'].sum().reset_index()
+    by_day = df_q.groupby(['Date', 'Type'])[['Clicks', 'Impressions']].sum().reset_index()
 
-    # 2. Date-only data for accurate impression totals (matches GSC UI)
+    # 2. Date-only data for accurate totals (matches GSC UI — no double-counting)
     resp_d = svc.searchanalytics().query(siteUrl=site_url, body={
         'startDate': start, 'endDate': end,
         'dimensions': ['date'], 'rowLimit': 5000
@@ -630,27 +630,33 @@ def fetch_gsc_branded(_ct, site_url, start, end):
                           'Total_Clicks': row['clicks']})
     df_d = pd.DataFrame(impr_rows) if impr_rows else pd.DataFrame()
 
-    # 3. Split impressions by branded click share per day
-    clicks_pivot = clicks_by_day.pivot(index='Date', columns='Type', values='Clicks').fillna(0).reset_index()
-    if 'Branded' not in clicks_pivot.columns: clicks_pivot['Branded'] = 0
-    if 'Non-branded' not in clicks_pivot.columns: clicks_pivot['Non-branded'] = 0
-    clicks_pivot['Total'] = clicks_pivot['Branded'] + clicks_pivot['Non-branded']
-    clicks_pivot['Branded_Share'] = clicks_pivot.apply(
-        lambda r: r['Branded'] / r['Total'] if r['Total'] > 0 else 0.5, axis=1)
-    clicks_pivot['NonBranded_Share'] = 1 - clicks_pivot['Branded_Share']
+    # 3. Split accurate totals using impression share from query-level data.
+    #    Using impression share (not click share) because branded queries have very high
+    #    CTR, so click share massively over-attributes impressions to branded.
+    pivot = by_day.pivot(index='Date', columns='Type', values=['Clicks', 'Impressions']).fillna(0)
+    pivot.columns = ['_'.join(c) for c in pivot.columns]
+    pivot = pivot.reset_index()
+    for col in ['Clicks_Branded', 'Clicks_Non-branded', 'Impressions_Branded', 'Impressions_Non-branded']:
+        if col not in pivot.columns:
+            pivot[col] = 0
 
-    merged = clicks_pivot.merge(df_d[['Date', 'Total_Impressions']], on='Date', how='left')
+    pivot['Total_Q_Impr'] = pivot['Impressions_Branded'] + pivot['Impressions_Non-branded']
+    pivot['Branded_Impr_Share'] = pivot.apply(
+        lambda r: r['Impressions_Branded'] / r['Total_Q_Impr'] if r['Total_Q_Impr'] > 0 else 0.5, axis=1)
+    pivot['NonBranded_Impr_Share'] = 1 - pivot['Branded_Impr_Share']
+
+    merged = pivot.merge(df_d[['Date', 'Total_Impressions']], on='Date', how='left')
     merged['Total_Impressions'] = merged['Total_Impressions'].fillna(0)
-    merged['Branded_Impr'] = (merged['Total_Impressions'] * merged['Branded_Share']).round().astype(int)
-    merged['NonBranded_Impr'] = (merged['Total_Impressions'] * merged['NonBranded_Share']).round().astype(int)
+    merged['Branded_Impr'] = (merged['Total_Impressions'] * merged['Branded_Impr_Share']).round().astype(int)
+    merged['NonBranded_Impr'] = (merged['Total_Impressions'] * merged['NonBranded_Impr_Share']).round().astype(int)
 
-    # 4. Reshape to long format matching original schema
+    # 4. Reshape to long format
     rows_out = []
     for _, r in merged.iterrows():
         rows_out.append({'Date': r['Date'], 'Type': 'Branded',
-                         'Clicks': int(r['Branded']), 'Impressions': int(r['Branded_Impr'])})
+                         'Clicks': int(r['Clicks_Branded']), 'Impressions': int(r['Branded_Impr'])})
         rows_out.append({'Date': r['Date'], 'Type': 'Non-branded',
-                         'Clicks': int(r['Non-branded']), 'Impressions': int(r['NonBranded_Impr'])})
+                         'Clicks': int(r['Clicks_Non-branded']), 'Impressions': int(r['NonBranded_Impr'])})
     return pd.DataFrame(rows_out)
 
 def _get_creds():
