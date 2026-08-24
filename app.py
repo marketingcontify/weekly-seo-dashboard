@@ -595,21 +595,63 @@ BRAND_REGEX = re.compile(r'\b(contif[a-z]*|comtify|contigy|kontify|contfy|contri
 
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_gsc_branded(_ct, site_url, start, end):
-    """Fetch GSC query data and split into branded vs non-branded using brand regex."""
+    """Fetch GSC branded vs non-branded data.
+    - Clicks: from query+date dimension (accurate, additive)
+    - Impressions: from date-only dimension to avoid query-level double-counting,
+      then split by branded click share per day.
+    """
     from googleapiclient.discovery import build
     creds = _get_creds()
     svc = build('searchconsole', 'v1', credentials=creds)
-    resp = svc.searchanalytics().query(siteUrl=site_url, body={
+
+    # 1. Query-level data for clicks + branded classification
+    resp_q = svc.searchanalytics().query(siteUrl=site_url, body={
         'startDate': start, 'endDate': end,
         'dimensions': ['query', 'date'], 'rowLimit': 25000
     }).execute()
-    rows = []
-    for row in resp.get('rows', []):
+    query_rows = []
+    for row in resp_q.get('rows', []):
         query, date = row['keys'][0], row['keys'][1]
-        rows.append({'Query': query, 'Date': date, 'Clicks': row['clicks'],
-                     'Impressions': row['impressions'], 'CTR': row['ctr'] * 100, 'Position': row['position'],
-                     'Type': 'Branded' if BRAND_REGEX.search(query) else 'Non-branded'})
-    return pd.DataFrame(rows) if rows else pd.DataFrame()
+        query_rows.append({'Date': date, 'Clicks': row['clicks'],
+                           'Type': 'Branded' if BRAND_REGEX.search(query) else 'Non-branded'})
+    if not query_rows:
+        return pd.DataFrame()
+    df_q = pd.DataFrame(query_rows)
+    clicks_by_day = df_q.groupby(['Date', 'Type'])['Clicks'].sum().reset_index()
+
+    # 2. Date-only data for accurate impression totals (matches GSC UI)
+    resp_d = svc.searchanalytics().query(siteUrl=site_url, body={
+        'startDate': start, 'endDate': end,
+        'dimensions': ['date'], 'rowLimit': 5000
+    }).execute()
+    impr_rows = []
+    for row in resp_d.get('rows', []):
+        impr_rows.append({'Date': row['keys'][0], 'Total_Impressions': row['impressions'],
+                          'Total_Clicks': row['clicks']})
+    df_d = pd.DataFrame(impr_rows) if impr_rows else pd.DataFrame()
+
+    # 3. Split impressions by branded click share per day
+    clicks_pivot = clicks_by_day.pivot(index='Date', columns='Type', values='Clicks').fillna(0).reset_index()
+    if 'Branded' not in clicks_pivot.columns: clicks_pivot['Branded'] = 0
+    if 'Non-branded' not in clicks_pivot.columns: clicks_pivot['Non-branded'] = 0
+    clicks_pivot['Total'] = clicks_pivot['Branded'] + clicks_pivot['Non-branded']
+    clicks_pivot['Branded_Share'] = clicks_pivot.apply(
+        lambda r: r['Branded'] / r['Total'] if r['Total'] > 0 else 0.5, axis=1)
+    clicks_pivot['NonBranded_Share'] = 1 - clicks_pivot['Branded_Share']
+
+    merged = clicks_pivot.merge(df_d[['Date', 'Total_Impressions']], on='Date', how='left')
+    merged['Total_Impressions'] = merged['Total_Impressions'].fillna(0)
+    merged['Branded_Impr'] = (merged['Total_Impressions'] * merged['Branded_Share']).round().astype(int)
+    merged['NonBranded_Impr'] = (merged['Total_Impressions'] * merged['NonBranded_Share']).round().astype(int)
+
+    # 4. Reshape to long format matching original schema
+    rows_out = []
+    for _, r in merged.iterrows():
+        rows_out.append({'Date': r['Date'], 'Type': 'Branded',
+                         'Clicks': int(r['Branded']), 'Impressions': int(r['Branded_Impr'])})
+        rows_out.append({'Date': r['Date'], 'Type': 'Non-branded',
+                         'Clicks': int(r['Non-branded']), 'Impressions': int(r['NonBranded_Impr'])})
+    return pd.DataFrame(rows_out)
 
 def _get_creds():
     # On cloud, load OAuth token from secrets
