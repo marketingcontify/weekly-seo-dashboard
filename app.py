@@ -591,69 +591,29 @@ def fetch_gsc(_ct, site_url, start, end, dim='page'):
         rows.append({dim.capitalize(): row['keys'][0], 'Date': row['keys'][1], 'Clicks': row['clicks'], 'Impressions': row['impressions'], 'CTR': row['ctr']*100, 'Position': row['position']})
     return pd.DataFrame(rows)
 
-BRAND_REGEX = re.compile(r'\b(contif[a-z]*|comtify|contigy|kontify|contfy|contrify|confify|comptify|cantify)\b', re.IGNORECASE)
-BRANDED_SHEET_ID = '1BdcYlDAFUqkv10mpKR1H_jp2YKm1iRJ6-UQrbWvulZQ'
+BRAND_REGEX = re.compile(r’\b(contif[a-z]*|comtify|contigy|kontify|contfy|contrify|confify|comptify|cantify)\b’, re.IGNORECASE)
+BRANDED_SHEET_CSV = ‘https://docs.google.com/spreadsheets/d/1BdcYlDAFUqkv10mpKR1H_jp2YKm1iRJ6-UQrbWvulZQ/export?format=csv&gid=1184768266’
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_gsc_branded(_ct, site_url, start, end):
-    """Read branded vs non-branded GSC data from Google Sheet (manually maintained).
-    Sheet: https://docs.google.com/spreadsheets/d/1BdcYlDAFUqkv10mpKR1H_jp2YKm1iRJ6-UQrbWvulZQ
+    """Read branded vs non-branded GSC data from public Google Sheet (manually maintained).
     Columns: Week | Metrics | Brand | Non-Brand | Not Defined | Total | ...
     """
     import re as _re
     from datetime import datetime as _dt
-    from googleapiclient.discovery import build
-    from google.oauth2 import service_account
-
-    # Build SA credentials with Sheets scope (separate from GA4/GSC scopes)
-    sheets_creds = None
-    try:
-        if hasattr(st, 'secrets') and 'ga4' in st.secrets and 'credentials' in st.secrets['ga4']:
-            sa = st.secrets["ga4"]["credentials"]
-            creds_info = {
-                "type": str(sa.get("type", "service_account")),
-                "project_id": str(sa["project_id"]),
-                "private_key_id": str(sa["private_key_id"]),
-                "private_key": str(sa["private_key"]).replace('\\n', '\n'),
-                "client_email": str(sa["client_email"]),
-                "client_id": str(sa["client_id"]),
-                "auth_uri": str(sa.get("auth_uri", "https://accounts.google.com/o/oauth2/auth")),
-                "token_uri": str(sa.get("token_uri", "https://oauth2.googleapis.com/token")),
-                "auth_provider_x509_cert_url": str(sa.get("auth_provider_x509_cert_url", "https://www.googleapis.com/oauth2/v1/certs")),
-                "client_x509_cert_url": str(sa.get("client_x509_cert_url", "")),
-            }
-            sheets_creds = service_account.Credentials.from_service_account_info(
-                creds_info, scopes=['https://www.googleapis.com/auth/spreadsheets.readonly'])
-    except Exception:
-        pass
-    if sheets_creds is None:
-        try:
-            sheets_creds = service_account.Credentials.from_service_account_file(
-                SERVICE_ACCOUNT_FILE, scopes=['https://www.googleapis.com/auth/spreadsheets.readonly'])
-        except Exception:
-            pass
-    if sheets_creds is None:
-        return pd.DataFrame()
-
-    svc = build('sheets', 'v4', credentials=sheets_creds)
-    result = svc.spreadsheets().values().get(
-        spreadsheetId=BRANDED_SHEET_ID, range='GSC!A:F').execute()
-    raw_rows = result.get('values', [])
-    if len(raw_rows) < 2:
-        return pd.DataFrame()
 
     def _parse_week_start(label):
         """Parse sheet week label to YYYY-MM-DD start date."""
-        label = label.strip().replace('–', '-').replace('—', '-').replace('’', "'")
-        # Cross-month: "31 Aug - 6 Sep'26"
-        m = _re.match(r"(\d+)\s+(\w+)\s*-\s*\d+\s+\w+'(\d+)", label)
+        label = str(label).strip().replace(‘–‘, ‘-’).replace(‘—‘, ‘-’).replace(‘’’, "’").replace(‘‘’, "’")
+        # Cross-month: "31 Aug - 6 Sep’26"
+        m = _re.match(r"(\d+)\s+(\w+)\s*-\s*\d+\s+\w+’(\d+)", label)
         if m:
             try:
                 return _dt.strptime(f"{m.group(1)} {m.group(2)} 20{m.group(3)}", "%d %b %Y").strftime("%Y-%m-%d")
             except Exception:
                 pass
-        # Same month: "7-13 Sep'26" or "24 - 30 Aug'26"
-        m = _re.match(r"(\d+)\s*-\s*\d+\s+(\w+)'(\d+)", label)
+        # Same month: "7-13 Sep’26" or "24 - 30 Aug’26"
+        m = _re.match(r"(\d+)\s*-\s*\d+\s+(\w+)’(\d+)", label)
         if m:
             try:
                 return _dt.strptime(f"{m.group(1)} {m.group(2)} 20{m.group(3)}", "%d %b %Y").strftime("%Y-%m-%d")
@@ -663,35 +623,45 @@ def fetch_gsc_branded(_ct, site_url, start, end):
 
     def _int(val):
         try:
-            return int(str(val).replace(',', '').strip())
+            return int(str(val).replace(‘,’, ‘’).strip())
         except Exception:
             return 0
 
+    try:
+        df_raw = pd.read_csv(BRANDED_SHEET_CSV, header=0)
+    except Exception as e:
+        raise RuntimeError(f"Could not load GSC sheet: {e}")
+
+    # Columns: Week, Metrics, Brand, Non-Brand, Not Defined, Total, ...
+    df_raw.columns = [str(c).strip() for c in df_raw.columns]
+    week_col = df_raw.columns[0]
+    metric_col = df_raw.columns[1]
+    brand_col = df_raw.columns[2]
+    nonbrand_col = df_raw.columns[3]
+
+    # Forward-fill the Week column (merged cells come through as NaN)
+    df_raw[week_col] = df_raw[week_col].ffill()
+
     out_rows = []
-    current_date = None
-    for row in raw_rows[1:]:
-        if not row:
+    for _, row in df_raw.iterrows():
+        metric = str(row[metric_col]).strip()
+        if metric not in (‘Clicks’, ‘Impressions’):
             continue
-        week_cell = row[0].strip() if len(row) > 0 else ''
-        metric_cell = row[1].strip() if len(row) > 1 else ''
-        if week_cell:
-            current_date = _parse_week_start(week_cell)
-        if not current_date or metric_cell not in ('Clicks', 'Impressions'):
+        week_date = _parse_week_start(str(row[week_col]))
+        if not week_date:
             continue
-        branded_val = _int(row[2]) if len(row) > 2 else 0
-        nonbranded_val = _int(row[3]) if len(row) > 3 else 0
-        out_rows.append({'Date': current_date, 'Metric': metric_cell, 'Type': 'Branded', 'Value': branded_val})
-        out_rows.append({'Date': current_date, 'Metric': metric_cell, 'Type': 'Non-branded', 'Value': nonbranded_val})
+        out_rows.append({‘Date’: week_date, ‘Metric’: metric, ‘Type’: ‘Branded’, ‘Value’: _int(row[brand_col])})
+        out_rows.append({‘Date’: week_date, ‘Metric’: metric, ‘Type’: ‘Non-branded’, ‘Value’: _int(row[nonbrand_col])})
 
     if not out_rows:
         return pd.DataFrame()
 
     df = pd.DataFrame(out_rows)
-    clicks_df = df[df['Metric'] == 'Clicks'][['Date', 'Type', 'Value']].rename(columns={'Value': 'Clicks'})
-    impr_df = df[df['Metric'] == 'Impressions'][['Date', 'Type', 'Value']].rename(columns={'Value': 'Impressions'})
-    merged = clicks_df.merge(impr_df, on=['Date', 'Type'], how='outer').fillna(0)
-    merged['Clicks'] = merged['Clicks'].astype(int)
-    merged['Impressions'] = merged['Impressions'].astype(int)
+    clicks_df = df[df[‘Metric’] == ‘Clicks’][[‘Date’, ‘Type’, ‘Value’]].rename(columns={‘Value’: ‘Clicks’})
+    impr_df = df[df[‘Metric’] == ‘Impressions’][[‘Date’, ‘Type’, ‘Value’]].rename(columns={‘Value’: ‘Impressions’})
+    merged = clicks_df.merge(impr_df, on=[‘Date’, ‘Type’], how=’outer’).fillna(0)
+    merged[‘Clicks’] = merged[‘Clicks’].astype(int)
+    merged[‘Impressions’] = merged[‘Impressions’].astype(int)
     return merged
 
 def _get_creds():
