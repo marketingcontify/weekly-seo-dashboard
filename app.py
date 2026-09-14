@@ -1960,9 +1960,12 @@ if not gsc_branded_df.empty:
         <th>Impressions (This Wk)</th><th>Impressions (Prev Wk)</th><th>Change</th></tr>
         {rows_html}</table>""", unsafe_allow_html=True)
 
-    branded_pct = (branded_clicks_cur / (branded_clicks_cur + nonbranded_clicks_cur) * 100) if (branded_clicks_cur + nonbranded_clicks_cur) > 0 else 0
+    total_classified = branded_clicks_cur + nonbranded_clicks_cur
+    total_all = branded_clicks_cur + nonbranded_clicks_cur + notdef_clicks_cur
+    branded_pct_of_total = (branded_clicks_cur / total_all * 100) if total_all > 0 else 0
+    branded_pct_classified = (branded_clicks_cur / total_classified * 100) if total_classified > 0 else 0
     insight_box([
-        f"Branded clicks this week: <strong>{fmt(branded_clicks_cur)}</strong> ({branded_pct:.0f}% of total) {change_html(pct_change(branded_clicks_cur, branded_clicks_prev))} vs last week",
+        f"Branded clicks this week: <strong>{fmt(branded_clicks_cur)}</strong> ({branded_pct_of_total:.0f}% of all clicks, {branded_pct_classified:.0f}% excl. Unclassified) {change_html(pct_change(branded_clicks_cur, branded_clicks_prev))} vs last week",
         f"Non-branded clicks this week: <strong>{fmt(nonbranded_clicks_cur)}</strong> {change_html(pct_change(nonbranded_clicks_cur, nonbranded_clicks_prev))} vs last week",
         f"Non-branded impressions: <strong>{fmt(nonbranded_impr_cur)}</strong> — indicates organic visibility beyond brand searches",
     ], section_key='gsc_branded')
