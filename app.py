@@ -591,8 +591,8 @@ def fetch_gsc(_ct, site_url, start, end, dim='page'):
         rows.append({dim.capitalize(): row['keys'][0], 'Date': row['keys'][1], 'Clicks': row['clicks'], 'Impressions': row['impressions'], 'CTR': row['ctr']*100, 'Position': row['position']})
     return pd.DataFrame(rows)
 
-BRAND_REGEX = re.compile(r’\b(contif[a-z]*|comtify|contigy|kontify|contfy|contrify|confify|comptify|cantify)\b’, re.IGNORECASE)
-BRANDED_SHEET_CSV = ‘https://docs.google.com/spreadsheets/d/1BdcYlDAFUqkv10mpKR1H_jp2YKm1iRJ6-UQrbWvulZQ/export?format=csv&gid=1184768266’
+BRAND_REGEX = re.compile(r'\b(contif[a-z]*|comtify|contigy|kontify|contfy|contrify|confify|comptify|cantify)\b', re.IGNORECASE)
+BRANDED_SHEET_CSV = 'https://docs.google.com/spreadsheets/d/1BdcYlDAFUqkv10mpKR1H_jp2YKm1iRJ6-UQrbWvulZQ/export?format=csv&gid=1184768266'
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_gsc_branded(_ct, site_url, start, end):
@@ -604,16 +604,16 @@ def fetch_gsc_branded(_ct, site_url, start, end):
 
     def _parse_week_start(label):
         """Parse sheet week label to YYYY-MM-DD start date."""
-        label = str(label).strip().replace(‘–‘, ‘-’).replace(‘—‘, ‘-’).replace(‘’’, "’").replace(‘‘’, "’")
-        # Cross-month: "31 Aug - 6 Sep’26"
-        m = _re.match(r"(\d+)\s+(\w+)\s*-\s*\d+\s+\w+’(\d+)", label)
+        label = str(label).strip().replace('–', '-').replace('—', '-').replace(''', "'").replace(''', "'")
+        # Cross-month: "31 Aug - 6 Sep'26"
+        m = _re.match(r"(\d+)\s+(\w+)\s*-\s*\d+\s+\w+'(\d+)", label)
         if m:
             try:
                 return _dt.strptime(f"{m.group(1)} {m.group(2)} 20{m.group(3)}", "%d %b %Y").strftime("%Y-%m-%d")
             except Exception:
                 pass
-        # Same month: "7-13 Sep’26" or "24 - 30 Aug’26"
-        m = _re.match(r"(\d+)\s*-\s*\d+\s+(\w+)’(\d+)", label)
+        # Same month: "7-13 Sep'26" or "24 - 30 Aug'26"
+        m = _re.match(r"(\d+)\s*-\s*\d+\s+(\w+)'(\d+)", label)
         if m:
             try:
                 return _dt.strptime(f"{m.group(1)} {m.group(2)} 20{m.group(3)}", "%d %b %Y").strftime("%Y-%m-%d")
@@ -623,7 +623,7 @@ def fetch_gsc_branded(_ct, site_url, start, end):
 
     def _int(val):
         try:
-            return int(str(val).replace(‘,’, ‘’).strip())
+            return int(str(val).replace(',', '').strip())
         except Exception:
             return 0
 
@@ -645,23 +645,23 @@ def fetch_gsc_branded(_ct, site_url, start, end):
     out_rows = []
     for _, row in df_raw.iterrows():
         metric = str(row[metric_col]).strip()
-        if metric not in (‘Clicks’, ‘Impressions’):
+        if metric not in ('Clicks', 'Impressions'):
             continue
         week_date = _parse_week_start(str(row[week_col]))
         if not week_date:
             continue
-        out_rows.append({‘Date’: week_date, ‘Metric’: metric, ‘Type’: ‘Branded’, ‘Value’: _int(row[brand_col])})
-        out_rows.append({‘Date’: week_date, ‘Metric’: metric, ‘Type’: ‘Non-branded’, ‘Value’: _int(row[nonbrand_col])})
+        out_rows.append({'Date': week_date, 'Metric': metric, 'Type': 'Branded', 'Value': _int(row[brand_col])})
+        out_rows.append({'Date': week_date, 'Metric': metric, 'Type': 'Non-branded', 'Value': _int(row[nonbrand_col])})
 
     if not out_rows:
         return pd.DataFrame()
 
     df = pd.DataFrame(out_rows)
-    clicks_df = df[df[‘Metric’] == ‘Clicks’][[‘Date’, ‘Type’, ‘Value’]].rename(columns={‘Value’: ‘Clicks’})
-    impr_df = df[df[‘Metric’] == ‘Impressions’][[‘Date’, ‘Type’, ‘Value’]].rename(columns={‘Value’: ‘Impressions’})
-    merged = clicks_df.merge(impr_df, on=[‘Date’, ‘Type’], how=’outer’).fillna(0)
-    merged[‘Clicks’] = merged[‘Clicks’].astype(int)
-    merged[‘Impressions’] = merged[‘Impressions’].astype(int)
+    clicks_df = df[df['Metric'] == 'Clicks'][['Date', 'Type', 'Value']].rename(columns={'Value': 'Clicks'})
+    impr_df = df[df['Metric'] == 'Impressions'][['Date', 'Type', 'Value']].rename(columns={'Value': 'Impressions'})
+    merged = clicks_df.merge(impr_df, on=['Date', 'Type'], how='outer').fillna(0)
+    merged['Clicks'] = merged['Clicks'].astype(int)
+    merged['Impressions'] = merged['Impressions'].astype(int)
     return merged
 
 def _get_creds():
