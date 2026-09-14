@@ -1896,7 +1896,7 @@ if not gsc_branded_df.empty:
             textinfo='label+percent', hole=0.4,
             hovertemplate='%{label}: %{value:,} clicks (%{percent})<extra></extra>'))
         fig_pc.update_layout(
-            title='Clicks Ratio — This Week', height=320,
+            title='Share of Total Clicks — This Week', height=320,
             font=dict(family='Inter', size=12),
             legend=dict(orientation='h', y=-0.15),
             margin=dict(t=50, b=40, l=20, r=20),
@@ -1911,7 +1911,7 @@ if not gsc_branded_df.empty:
             textinfo='label+percent', hole=0.4,
             hovertemplate='%{label}: %{value:,} impressions (%{percent})<extra></extra>'))
         fig_pi.update_layout(
-            title='Impressions Ratio — This Week', height=320,
+            title='Share of Total Impressions — This Week', height=320,
             font=dict(family='Inter', size=12),
             legend=dict(orientation='h', y=-0.15),
             margin=dict(t=50, b=40, l=20, r=20),
