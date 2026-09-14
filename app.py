@@ -592,55 +592,107 @@ def fetch_gsc(_ct, site_url, start, end, dim='page'):
     return pd.DataFrame(rows)
 
 BRAND_REGEX = re.compile(r'\b(contif[a-z]*|comtify|contigy|kontify|contfy|contrify|confify|comptify|cantify)\b', re.IGNORECASE)
+BRANDED_SHEET_ID = '1BdcYlDAFUqkv10mpKR1H_jp2YKm1iRJ6-UQrbWvulZQ'
 
-@st.cache_data(ttl=600, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def fetch_gsc_branded(_ct, site_url, start, end):
-    """Fetch GSC branded vs non-branded data.
-    - Clicks: from query+date dimension (accurate, additive)
-    - Impressions: from date-only dimension to avoid query-level double-counting,
-      then split by branded click share per day.
+    """Read branded vs non-branded GSC data from Google Sheet (manually maintained).
+    Sheet: https://docs.google.com/spreadsheets/d/1BdcYlDAFUqkv10mpKR1H_jp2YKm1iRJ6-UQrbWvulZQ
+    Columns: Week | Metrics | Brand | Non-Brand | Not Defined | Total | ...
     """
+    import re as _re
+    from datetime import datetime as _dt
     from googleapiclient.discovery import build
-    creds = _get_creds()
-    svc = build('searchconsole', 'v1', credentials=creds)
+    from google.oauth2 import service_account
 
-    brand_pattern = r'contif[a-z]*|comtify|contigy|kontify|contfy|contrify|confify|comptify|cantify'
-
-    def _fetch_filtered(filter_type):
-        # filter_type: 'includingRegex' for branded, 'excludingRegex' for non-branded
-        return svc.searchanalytics().query(siteUrl=site_url, body={
-            'startDate': start, 'endDate': end,
-            'dimensions': ['date'],
-            'dimensionFilterGroups': [{'filters': [{
-                'dimension': 'query',
-                'operator': filter_type,
-                'expression': brand_pattern
-            }]}],
-            'rowLimit': 5000
-        }).execute()
-
-    # Branded: date-only with brand regex filter → accurate, no double-counting
-    resp_b = _fetch_filtered('includingRegex')
-    branded_rows = []
-    for row in resp_b.get('rows', []):
-        branded_rows.append({'Date': row['keys'][0], 'Clicks': row['clicks'],
-                             'Impressions': row['impressions']})
-
-    # Non-branded: date-only excluding brand queries
-    resp_nb = _fetch_filtered('excludingRegex')
-    nonbranded_rows = []
-    for row in resp_nb.get('rows', []):
-        nonbranded_rows.append({'Date': row['keys'][0], 'Clicks': row['clicks'],
-                                'Impressions': row['impressions']})
-
-    if not branded_rows and not nonbranded_rows:
+    # Build SA credentials with Sheets scope (separate from GA4/GSC scopes)
+    sheets_creds = None
+    try:
+        if hasattr(st, 'secrets') and 'ga4' in st.secrets and 'credentials' in st.secrets['ga4']:
+            sa = st.secrets["ga4"]["credentials"]
+            creds_info = {
+                "type": str(sa.get("type", "service_account")),
+                "project_id": str(sa["project_id"]),
+                "private_key_id": str(sa["private_key_id"]),
+                "private_key": str(sa["private_key"]).replace('\\n', '\n'),
+                "client_email": str(sa["client_email"]),
+                "client_id": str(sa["client_id"]),
+                "auth_uri": str(sa.get("auth_uri", "https://accounts.google.com/o/oauth2/auth")),
+                "token_uri": str(sa.get("token_uri", "https://oauth2.googleapis.com/token")),
+                "auth_provider_x509_cert_url": str(sa.get("auth_provider_x509_cert_url", "https://www.googleapis.com/oauth2/v1/certs")),
+                "client_x509_cert_url": str(sa.get("client_x509_cert_url", "")),
+            }
+            sheets_creds = service_account.Credentials.from_service_account_info(
+                creds_info, scopes=['https://www.googleapis.com/auth/spreadsheets.readonly'])
+    except Exception:
+        pass
+    if sheets_creds is None:
+        try:
+            sheets_creds = service_account.Credentials.from_service_account_file(
+                SERVICE_ACCOUNT_FILE, scopes=['https://www.googleapis.com/auth/spreadsheets.readonly'])
+        except Exception:
+            pass
+    if sheets_creds is None:
         return pd.DataFrame()
 
-    df_b = pd.DataFrame(branded_rows) if branded_rows else pd.DataFrame(columns=['Date','Clicks','Impressions'])
-    df_nb = pd.DataFrame(nonbranded_rows) if nonbranded_rows else pd.DataFrame(columns=['Date','Clicks','Impressions'])
-    df_b['Type'] = 'Branded'
-    df_nb['Type'] = 'Non-branded'
-    return pd.concat([df_b, df_nb], ignore_index=True)
+    svc = build('sheets', 'v4', credentials=sheets_creds)
+    result = svc.spreadsheets().values().get(
+        spreadsheetId=BRANDED_SHEET_ID, range='GSC!A:F').execute()
+    raw_rows = result.get('values', [])
+    if len(raw_rows) < 2:
+        return pd.DataFrame()
+
+    def _parse_week_start(label):
+        """Parse sheet week label to YYYY-MM-DD start date."""
+        label = label.strip().replace('–', '-').replace('—', '-').replace('’', "'")
+        # Cross-month: "31 Aug - 6 Sep'26"
+        m = _re.match(r"(\d+)\s+(\w+)\s*-\s*\d+\s+\w+'(\d+)", label)
+        if m:
+            try:
+                return _dt.strptime(f"{m.group(1)} {m.group(2)} 20{m.group(3)}", "%d %b %Y").strftime("%Y-%m-%d")
+            except Exception:
+                pass
+        # Same month: "7-13 Sep'26" or "24 - 30 Aug'26"
+        m = _re.match(r"(\d+)\s*-\s*\d+\s+(\w+)'(\d+)", label)
+        if m:
+            try:
+                return _dt.strptime(f"{m.group(1)} {m.group(2)} 20{m.group(3)}", "%d %b %Y").strftime("%Y-%m-%d")
+            except Exception:
+                pass
+        return None
+
+    def _int(val):
+        try:
+            return int(str(val).replace(',', '').strip())
+        except Exception:
+            return 0
+
+    out_rows = []
+    current_date = None
+    for row in raw_rows[1:]:
+        if not row:
+            continue
+        week_cell = row[0].strip() if len(row) > 0 else ''
+        metric_cell = row[1].strip() if len(row) > 1 else ''
+        if week_cell:
+            current_date = _parse_week_start(week_cell)
+        if not current_date or metric_cell not in ('Clicks', 'Impressions'):
+            continue
+        branded_val = _int(row[2]) if len(row) > 2 else 0
+        nonbranded_val = _int(row[3]) if len(row) > 3 else 0
+        out_rows.append({'Date': current_date, 'Metric': metric_cell, 'Type': 'Branded', 'Value': branded_val})
+        out_rows.append({'Date': current_date, 'Metric': metric_cell, 'Type': 'Non-branded', 'Value': nonbranded_val})
+
+    if not out_rows:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(out_rows)
+    clicks_df = df[df['Metric'] == 'Clicks'][['Date', 'Type', 'Value']].rename(columns={'Value': 'Clicks'})
+    impr_df = df[df['Metric'] == 'Impressions'][['Date', 'Type', 'Value']].rename(columns={'Value': 'Impressions'})
+    merged = clicks_df.merge(impr_df, on=['Date', 'Type'], how='outer').fillna(0)
+    merged['Clicks'] = merged['Clicks'].astype(int)
+    merged['Impressions'] = merged['Impressions'].astype(int)
+    return merged
 
 def _get_creds():
     # On cloud, load OAuth token from secrets
