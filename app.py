@@ -1915,6 +1915,11 @@ if not gsc_branded_df.empty:
         f"Non-branded clicks this week: <strong>{fmt(nonbranded_clicks_cur)}</strong> {change_html(pct_change(nonbranded_clicks_cur, nonbranded_clicks_prev))} vs last week",
         f"Non-branded impressions: <strong>{fmt(nonbranded_impr_cur)}</strong> — indicates organic visibility beyond brand searches",
     ], section_key='gsc_branded')
+    st.markdown("""<div style="margin-top:12px;padding:10px 16px;background:#f8f9fa;border-left:3px solid #9ca3af;border-radius:4px;font-size:13px;color:#6b7280;">
+        <strong>ℹ️ About "Not Defined" queries:</strong> Google Search Console withholds certain query strings to protect user privacy.
+        This includes very low-volume searches (fewer than ~5 searches), searches made in incognito/private mode, and queries Google classifies as sensitive.
+        These clicks and impressions are real traffic — GSC simply does not reveal which keywords triggered them.
+    </div>""", unsafe_allow_html=True)
 section_end()
 
 # =====================================================
