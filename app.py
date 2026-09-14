@@ -1878,6 +1878,46 @@ if not gsc_branded_df.empty:
             margin=dict(t=60, b=60, l=40, r=20))
         st.plotly_chart(fig_impr, use_container_width=True)
 
+    # Pie charts — current week click & impression ratio
+    cur_b_pie = gsc_branded_df[gsc_branded_df['Week_Idx'] == cur_idx]
+    def _pie_val(t, col):
+        r = cur_b_pie[cur_b_pie['Type'] == t]
+        return int(r[col].sum()) if not r.empty else 0
+
+    pie_col1, pie_col2 = st.columns(2)
+    pie_labels = ['Branded', 'Non-branded', 'Not Defined']
+    pie_colors = ['#1a56db', '#ef4444', '#9ca3af']
+
+    with pie_col1:
+        pie_clicks = [_pie_val(t, 'Clicks') for t in pie_labels]
+        fig_pc = go.Figure(go.Pie(
+            labels=pie_labels, values=pie_clicks,
+            marker=dict(colors=pie_colors),
+            textinfo='label+percent', hole=0.4,
+            hovertemplate='%{label}: %{value:,} clicks (%{percent})<extra></extra>'))
+        fig_pc.update_layout(
+            title='Clicks Ratio — This Week', height=320,
+            font=dict(family='Inter', size=12),
+            legend=dict(orientation='h', y=-0.15),
+            margin=dict(t=50, b=40, l=20, r=20),
+            plot_bgcolor='white', paper_bgcolor='white')
+        st.plotly_chart(fig_pc, use_container_width=True)
+
+    with pie_col2:
+        pie_impr = [_pie_val(t, 'Impressions') for t in pie_labels]
+        fig_pi = go.Figure(go.Pie(
+            labels=pie_labels, values=pie_impr,
+            marker=dict(colors=pie_colors),
+            textinfo='label+percent', hole=0.4,
+            hovertemplate='%{label}: %{value:,} impressions (%{percent})<extra></extra>'))
+        fig_pi.update_layout(
+            title='Impressions Ratio — This Week', height=320,
+            font=dict(family='Inter', size=12),
+            legend=dict(orientation='h', y=-0.15),
+            margin=dict(t=50, b=40, l=20, r=20),
+            plot_bgcolor='white', paper_bgcolor='white')
+        st.plotly_chart(fig_pi, use_container_width=True)
+
     # Summary table
     cur_b = gsc_branded_df[gsc_branded_df['Week_Idx'] == cur_idx]
     prev_b = gsc_branded_df[gsc_branded_df['Week_Idx'] == prev_idx]
