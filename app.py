@@ -1967,9 +1967,10 @@ if not gsc_branded_df.empty:
         f"Non-branded impressions: <strong>{fmt(nonbranded_impr_cur)}</strong> — indicates organic visibility beyond brand searches",
     ], section_key='gsc_branded')
     st.markdown("""<div style="margin-top:12px;padding:10px 16px;background:#f8f9fa;border-left:3px solid #9ca3af;border-radius:4px;font-size:13px;color:#6b7280;">
-        <strong>ℹ️ About "Unclassified" queries:</strong> Google Search Console withholds certain query strings to protect user privacy.
-        This includes very low-volume searches (fewer than ~5 searches), searches made in incognito/private mode, and queries Google classifies as sensitive.
-        These clicks and impressions are real traffic — GSC simply does not reveal which keywords triggered them.
+        <strong>ℹ️ About "Unclassified" queries:</strong> Google Search Console anonymizes some search queries to protect user privacy.
+        These queries are included in overall clicks and impressions, but are excluded when query filters such as Brand/Non-brand regex are applied.
+        The difference may also include some data truncation caused by Search Console's reporting limits.
+        Therefore, this bucket represents performance that cannot be reliably classified as branded or non-branded.
     </div>""", unsafe_allow_html=True)
 section_end()
 
