@@ -1837,9 +1837,11 @@ if not gsc_branded_df.empty:
     col1, col2 = st.columns(2)
     with col1:
         clicks_df = gsc_branded_df.pivot(index='Week_Label', columns='Type', values='Clicks').reset_index()
+        type_cols = [c for c in ['Branded', 'Non-branded', 'Not Defined'] if c in clicks_df.columns]
+        clicks_df['Total'] = clicks_df[type_cols].sum(axis=1)
         fig_clicks = go.Figure()
-        colors = {'Branded': '#1a56db', 'Non-branded': '#ef4444', 'Not Defined': '#9ca3af'}
-        for t in ['Branded', 'Non-branded', 'Not Defined']:
+        colors = {'Branded': '#1a56db', 'Non-branded': '#ef4444', 'Not Defined': '#9ca3af', 'Total': '#6d28d9'}
+        for t in ['Branded', 'Non-branded', 'Not Defined', 'Total']:
             if t in clicks_df.columns:
                 fig_clicks.add_trace(go.Bar(
                     name=f'{t} Clicks', x=clicks_df['Week_Label'], y=clicks_df[t],
@@ -1856,8 +1858,10 @@ if not gsc_branded_df.empty:
 
     with col2:
         impr_df = gsc_branded_df.pivot(index='Week_Label', columns='Type', values='Impressions').reset_index()
+        impr_type_cols = [c for c in ['Branded', 'Non-branded', 'Not Defined'] if c in impr_df.columns]
+        impr_df['Total'] = impr_df[impr_type_cols].sum(axis=1)
         fig_impr = go.Figure()
-        for t in ['Branded', 'Non-branded', 'Not Defined']:
+        for t in ['Branded', 'Non-branded', 'Not Defined', 'Total']:
             if t in impr_df.columns:
                 fig_impr.add_trace(go.Bar(
                     name=f'{t} Impressions', x=impr_df['Week_Label'], y=impr_df[t],
