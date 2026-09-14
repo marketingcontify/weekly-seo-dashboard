@@ -1894,14 +1894,21 @@ if not gsc_branded_df.empty:
     nonbranded_impr_prev = _gsc_val(prev_b, 'Non-branded', 'Impressions')
     notdef_impr_prev = _gsc_val(prev_b, 'Not Defined', 'Impressions')
 
+    total_clicks_cur = branded_clicks_cur + nonbranded_clicks_cur + notdef_clicks_cur
+    total_clicks_prev = branded_clicks_prev + nonbranded_clicks_prev + notdef_clicks_prev
+    total_impr_cur = branded_impr_cur + nonbranded_impr_cur + notdef_impr_cur
+    total_impr_prev = branded_impr_prev + nonbranded_impr_prev + notdef_impr_prev
+
     rows_html = ""
     for label, cur_c, prev_c, cur_i, prev_i in [
         ('Branded', branded_clicks_cur, branded_clicks_prev, branded_impr_cur, branded_impr_prev),
         ('Non-branded', nonbranded_clicks_cur, nonbranded_clicks_prev, nonbranded_impr_cur, nonbranded_impr_prev),
         ('Not Defined', notdef_clicks_cur, notdef_clicks_prev, notdef_impr_cur, notdef_impr_prev),
+        ('Total', total_clicks_cur, total_clicks_prev, total_impr_cur, total_impr_prev),
     ]:
         cc = pct_change(cur_c, prev_c); ic = pct_change(cur_i, prev_i)
-        rows_html += (f"<tr><td><strong>{label}</strong></td>"
+        bold = ' style="font-weight:700;border-top:2px solid #e5e7eb;"' if label == 'Total' else ''
+        rows_html += (f"<tr{bold}><td><strong>{label}</strong></td>"
                       f"<td>{fmt(cur_c)}</td><td>{fmt(prev_c)}</td><td>{change_html(cc)}</td>"
                       f"<td>{fmt(cur_i)}</td><td>{fmt(prev_i)}</td><td>{change_html(ic)}</td></tr>")
     st.markdown(f"""<table class="kpi-table">
