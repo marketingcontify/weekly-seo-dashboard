@@ -1846,8 +1846,7 @@ if not gsc_branded_df.empty:
                 fig_clicks.add_trace(go.Bar(
                     name=f'{t} Clicks', x=clicks_df['Week_Label'], y=clicks_df[t],
                     marker_color=colors[t], text=clicks_df[t].apply(lambda v: f'{int(v):,}'),
-                    textposition='auto', insidetextanchor='middle',
-                    textfont=dict(color='white')))
+                    textposition='outside'))
         fig_clicks.update_layout(
             title='Branded vs Non-Branded Clicks', barmode='group', height=380,
             plot_bgcolor='white', paper_bgcolor='white',
@@ -1868,9 +1867,7 @@ if not gsc_branded_df.empty:
                     name=f'{t} Impressions', x=impr_df['Week_Label'], y=impr_df[t],
                     marker_color=colors[t],
                     text=impr_df[t].apply(lambda v: f'{int(v):,}'),
-                    textposition='auto',
-                    insidetextanchor='middle',
-                    textfont=dict(color='white')))
+                    textposition='outside'))
         fig_impr.update_layout(
             title='Branded vs Non-Branded Impressions', barmode='group', height=380,
             plot_bgcolor='white', paper_bgcolor='white',
