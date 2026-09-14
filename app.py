@@ -597,7 +597,7 @@ BRANDED_SHEET_CSV = 'https://docs.google.com/spreadsheets/d/1BdcYlDAFUqkv10mpKR1
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_gsc_branded(_ct, site_url, start, end):
     """Read branded vs non-branded GSC data from public Google Sheet (manually maintained).
-    Columns: Week | Metrics | Brand | Non-Brand | Not Defined | Total | ...
+    Columns: Week | Metrics | Brand | Non-Brand | Unclassified | Total | ...
     """
     import re as _re
     from datetime import datetime as _dt
@@ -632,7 +632,7 @@ def fetch_gsc_branded(_ct, site_url, start, end):
     except Exception as e:
         raise RuntimeError(f"Could not load GSC sheet: {e}")
 
-    # Columns: Week, Metrics, Brand, Non-Brand, Not Defined, Total, ...
+    # Columns: Week, Metrics, Brand, Non-Brand, Unclassified, Total, ...
     df_raw.columns = [str(c).strip() for c in df_raw.columns]
     week_col = df_raw.columns[0]
     metric_col = df_raw.columns[1]
@@ -654,7 +654,7 @@ def fetch_gsc_branded(_ct, site_url, start, end):
         out_rows.append({'Date': week_date, 'Metric': metric, 'Type': 'Branded', 'Value': _int(row[brand_col])})
         out_rows.append({'Date': week_date, 'Metric': metric, 'Type': 'Non-branded', 'Value': _int(row[nonbrand_col])})
         if notdef_col:
-            out_rows.append({'Date': week_date, 'Metric': metric, 'Type': 'Not Defined', 'Value': _int(row[notdef_col])})
+            out_rows.append({'Date': week_date, 'Metric': metric, 'Type': 'Unclassified', 'Value': _int(row[notdef_col])})
 
     if not out_rows:
         return pd.DataFrame()
@@ -1837,11 +1837,11 @@ if not gsc_branded_df.empty:
     col1, col2 = st.columns(2)
     with col1:
         clicks_df = gsc_branded_df.pivot(index='Week_Label', columns='Type', values='Clicks').reset_index()
-        type_cols = [c for c in ['Branded', 'Non-branded', 'Not Defined'] if c in clicks_df.columns]
+        type_cols = [c for c in ['Branded', 'Non-branded', 'Unclassified'] if c in clicks_df.columns]
         clicks_df['Total'] = clicks_df[type_cols].sum(axis=1)
         fig_clicks = go.Figure()
-        colors = {'Branded': '#1a56db', 'Non-branded': '#ef4444', 'Not Defined': '#9ca3af', 'Total': '#6d28d9'}
-        for t in ['Branded', 'Non-branded', 'Not Defined']:
+        colors = {'Branded': '#1a56db', 'Non-branded': '#ef4444', 'Unclassified': '#9ca3af', 'Total': '#6d28d9'}
+        for t in ['Branded', 'Non-branded', 'Unclassified']:
             if t in clicks_df.columns:
                 fig_clicks.add_trace(go.Bar(
                     name=f'{t} Clicks', x=clicks_df['Week_Label'], y=clicks_df[t],
@@ -1858,10 +1858,10 @@ if not gsc_branded_df.empty:
 
     with col2:
         impr_df = gsc_branded_df.pivot(index='Week_Label', columns='Type', values='Impressions').reset_index()
-        impr_type_cols = [c for c in ['Branded', 'Non-branded', 'Not Defined'] if c in impr_df.columns]
+        impr_type_cols = [c for c in ['Branded', 'Non-branded', 'Unclassified'] if c in impr_df.columns]
         impr_df['Total'] = impr_df[impr_type_cols].sum(axis=1)
         fig_impr = go.Figure()
-        for t in ['Branded', 'Non-branded', 'Not Defined']:
+        for t in ['Branded', 'Non-branded', 'Unclassified']:
             if t in impr_df.columns:
                 fig_impr.add_trace(go.Bar(
                     name=f'{t} Impressions', x=impr_df['Week_Label'], y=impr_df[t],
@@ -1885,7 +1885,7 @@ if not gsc_branded_df.empty:
         return int(r[col].sum()) if not r.empty else 0
 
     pie_col1, pie_col2 = st.columns(2)
-    pie_labels = ['Branded', 'Non-branded', 'Not Defined']
+    pie_labels = ['Branded', 'Non-branded', 'Unclassified']
     pie_colors = ['#1a56db', '#ef4444', '#9ca3af']
 
     with pie_col1:
@@ -1927,16 +1927,16 @@ if not gsc_branded_df.empty:
 
     branded_clicks_cur = _gsc_val(cur_b, 'Branded', 'Clicks')
     nonbranded_clicks_cur = _gsc_val(cur_b, 'Non-branded', 'Clicks')
-    notdef_clicks_cur = _gsc_val(cur_b, 'Not Defined', 'Clicks')
+    notdef_clicks_cur = _gsc_val(cur_b, 'Unclassified', 'Clicks')
     branded_clicks_prev = _gsc_val(prev_b, 'Branded', 'Clicks')
     nonbranded_clicks_prev = _gsc_val(prev_b, 'Non-branded', 'Clicks')
-    notdef_clicks_prev = _gsc_val(prev_b, 'Not Defined', 'Clicks')
+    notdef_clicks_prev = _gsc_val(prev_b, 'Unclassified', 'Clicks')
     branded_impr_cur = _gsc_val(cur_b, 'Branded', 'Impressions')
     nonbranded_impr_cur = _gsc_val(cur_b, 'Non-branded', 'Impressions')
-    notdef_impr_cur = _gsc_val(cur_b, 'Not Defined', 'Impressions')
+    notdef_impr_cur = _gsc_val(cur_b, 'Unclassified', 'Impressions')
     branded_impr_prev = _gsc_val(prev_b, 'Branded', 'Impressions')
     nonbranded_impr_prev = _gsc_val(prev_b, 'Non-branded', 'Impressions')
-    notdef_impr_prev = _gsc_val(prev_b, 'Not Defined', 'Impressions')
+    notdef_impr_prev = _gsc_val(prev_b, 'Unclassified', 'Impressions')
 
     total_clicks_cur = branded_clicks_cur + nonbranded_clicks_cur + notdef_clicks_cur
     total_clicks_prev = branded_clicks_prev + nonbranded_clicks_prev + notdef_clicks_prev
@@ -1947,7 +1947,7 @@ if not gsc_branded_df.empty:
     for label, cur_c, prev_c, cur_i, prev_i in [
         ('Branded', branded_clicks_cur, branded_clicks_prev, branded_impr_cur, branded_impr_prev),
         ('Non-branded', nonbranded_clicks_cur, nonbranded_clicks_prev, nonbranded_impr_cur, nonbranded_impr_prev),
-        ('Not Defined', notdef_clicks_cur, notdef_clicks_prev, notdef_impr_cur, notdef_impr_prev),
+        ('Unclassified', notdef_clicks_cur, notdef_clicks_prev, notdef_impr_cur, notdef_impr_prev),
         ('Total', total_clicks_cur, total_clicks_prev, total_impr_cur, total_impr_prev),
     ]:
         cc = pct_change(cur_c, prev_c); ic = pct_change(cur_i, prev_i)
@@ -1967,7 +1967,7 @@ if not gsc_branded_df.empty:
         f"Non-branded impressions: <strong>{fmt(nonbranded_impr_cur)}</strong> — indicates organic visibility beyond brand searches",
     ], section_key='gsc_branded')
     st.markdown("""<div style="margin-top:12px;padding:10px 16px;background:#f8f9fa;border-left:3px solid #9ca3af;border-radius:4px;font-size:13px;color:#6b7280;">
-        <strong>ℹ️ About "Not Defined" queries:</strong> Google Search Console withholds certain query strings to protect user privacy.
+        <strong>ℹ️ About "Unclassified" queries:</strong> Google Search Console withholds certain query strings to protect user privacy.
         This includes very low-volume searches (fewer than ~5 searches), searches made in incognito/private mode, and queries Google classifies as sensitive.
         These clicks and impressions are real traffic — GSC simply does not reveal which keywords triggered them.
     </div>""", unsafe_allow_html=True)
