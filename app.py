@@ -650,8 +650,11 @@ def fetch_gsc_branded(_ct, site_url, start, end):
         week_date = _parse_week_start(str(row[week_col]))
         if not week_date:
             continue
+        notdef_col = df_raw.columns[4] if len(df_raw.columns) > 4 else None
         out_rows.append({'Date': week_date, 'Metric': metric, 'Type': 'Branded', 'Value': _int(row[brand_col])})
         out_rows.append({'Date': week_date, 'Metric': metric, 'Type': 'Non-branded', 'Value': _int(row[nonbrand_col])})
+        if notdef_col:
+            out_rows.append({'Date': week_date, 'Metric': metric, 'Type': 'Not Defined', 'Value': _int(row[notdef_col])})
 
     if not out_rows:
         return pd.DataFrame()
@@ -1835,8 +1838,8 @@ if not gsc_branded_df.empty:
     with col1:
         clicks_df = gsc_branded_df.pivot(index='Week_Label', columns='Type', values='Clicks').reset_index()
         fig_clicks = go.Figure()
-        colors = {'Branded': '#1a56db', 'Non-branded': '#ef4444'}
-        for t in ['Branded', 'Non-branded']:
+        colors = {'Branded': '#1a56db', 'Non-branded': '#ef4444', 'Not Defined': '#9ca3af'}
+        for t in ['Branded', 'Non-branded', 'Not Defined']:
             if t in clicks_df.columns:
                 fig_clicks.add_trace(go.Bar(
                     name=f'{t} Clicks', x=clicks_df['Week_Label'], y=clicks_df[t],
@@ -1854,7 +1857,7 @@ if not gsc_branded_df.empty:
     with col2:
         impr_df = gsc_branded_df.pivot(index='Week_Label', columns='Type', values='Impressions').reset_index()
         fig_impr = go.Figure()
-        for t in ['Branded', 'Non-branded']:
+        for t in ['Branded', 'Non-branded', 'Not Defined']:
             if t in impr_df.columns:
                 fig_impr.add_trace(go.Bar(
                     name=f'{t} Impressions', x=impr_df['Week_Label'], y=impr_df[t],
@@ -1880,17 +1883,22 @@ if not gsc_branded_df.empty:
 
     branded_clicks_cur = _gsc_val(cur_b, 'Branded', 'Clicks')
     nonbranded_clicks_cur = _gsc_val(cur_b, 'Non-branded', 'Clicks')
+    notdef_clicks_cur = _gsc_val(cur_b, 'Not Defined', 'Clicks')
     branded_clicks_prev = _gsc_val(prev_b, 'Branded', 'Clicks')
     nonbranded_clicks_prev = _gsc_val(prev_b, 'Non-branded', 'Clicks')
+    notdef_clicks_prev = _gsc_val(prev_b, 'Not Defined', 'Clicks')
     branded_impr_cur = _gsc_val(cur_b, 'Branded', 'Impressions')
     nonbranded_impr_cur = _gsc_val(cur_b, 'Non-branded', 'Impressions')
+    notdef_impr_cur = _gsc_val(cur_b, 'Not Defined', 'Impressions')
     branded_impr_prev = _gsc_val(prev_b, 'Branded', 'Impressions')
     nonbranded_impr_prev = _gsc_val(prev_b, 'Non-branded', 'Impressions')
+    notdef_impr_prev = _gsc_val(prev_b, 'Not Defined', 'Impressions')
 
     rows_html = ""
     for label, cur_c, prev_c, cur_i, prev_i in [
         ('Branded', branded_clicks_cur, branded_clicks_prev, branded_impr_cur, branded_impr_prev),
         ('Non-branded', nonbranded_clicks_cur, nonbranded_clicks_prev, nonbranded_impr_cur, nonbranded_impr_prev),
+        ('Not Defined', notdef_clicks_cur, notdef_clicks_prev, notdef_impr_cur, notdef_impr_prev),
     ]:
         cc = pct_change(cur_c, prev_c); ic = pct_change(cur_i, prev_i)
         rows_html += (f"<tr><td><strong>{label}</strong></td>"
