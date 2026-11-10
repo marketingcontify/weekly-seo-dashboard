@@ -1824,8 +1824,10 @@ else:
             gsc_branded_df = pd.DataFrame()
         else:
             raw = assign_weeks(raw, weeks, date_col='Date', date_fmt='%Y-%m-%d')
-            gsc_branded_df = raw.groupby(['Week_Label','Week_Idx','Type']).agg(
-                Clicks=('Clicks','sum'), Impressions=('Impressions','sum')).reset_index()
+            # Sort by Date so the week's exact start date row wins over overlapping ranges
+            raw = raw.sort_values('Date')
+            gsc_branded_df = raw.drop_duplicates(subset=['Week_Idx', 'Type'], keep='first').copy()
+            gsc_branded_df = gsc_branded_df[['Week_Label','Week_Idx','Type','Clicks','Impressions']]
     except Exception as e:
         st.error(f"GSC branded data error: {e}")
         gsc_branded_df = pd.DataFrame()
