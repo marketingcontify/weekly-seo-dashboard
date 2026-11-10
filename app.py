@@ -1897,20 +1897,17 @@ if not gsc_branded_df.empty:
             pct = val / total * 100
             if pct < 0.5:
                 continue
-            label_html = (
-                f'<span style="font-weight:700;font-size:13px;">{lbl}</span>'
-                f'<span style="font-size:12px;opacity:.85;"> {pct:.1f}%</span>'
-                f'<br><span style="font-size:11px;opacity:.75;">{val:,}</span>'
-            )
             segments += (
-                f'<div style="width:{pct:.3f}%;background:{col};display:flex;'
+                f'<div style="width:{pct:.3f}%;background:{col};display:flex;flex-direction:column;'
                 f'align-items:center;justify-content:center;color:#fff;'
-                f'padding:0 6px;box-sizing:border-box;overflow:hidden;white-space:nowrap;">'
-                f'{label_html}</div>'
+                f'padding:0 4px;box-sizing:border-box;overflow:hidden;">'
+                f'<span style="font-weight:700;font-size:13px;white-space:nowrap;">{lbl} {pct:.1f}%</span>'
+                f'<span style="font-size:11px;opacity:.8;white-space:nowrap;">{val:,} {unit}</span>'
+                f'</div>'
             )
         st.markdown(
             f'<p style="font-weight:600;font-size:14px;margin:16px 0 8px 0;">{title}</p>'
-            f'<div style="display:flex;height:64px;border-radius:8px;overflow:hidden;'
+            f'<div style="display:flex;height:68px;border-radius:8px;overflow:hidden;'
             f'box-shadow:0 1px 4px rgba(0,0,0,.08);">{segments}</div>'
             f'<p style="font-size:12px;color:#6b7280;margin:4px 0 0 0;">Total: {total:,} {unit}</p>',
             unsafe_allow_html=True)
