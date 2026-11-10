@@ -594,7 +594,7 @@ def fetch_gsc(_ct, site_url, start, end, dim='page'):
 BRAND_REGEX = re.compile(r'\b(contif[a-z]*|comtify|contigy|kontify|contfy|contrify|confify|comptify|cantify)\b', re.IGNORECASE)
 BRANDED_SHEET_CSV = 'https://docs.google.com/spreadsheets/d/1BdcYlDAFUqkv10mpKR1H_jp2YKm1iRJ6-UQrbWvulZQ/export?format=csv&gid=1184768266'
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def fetch_gsc_branded(_ct, site_url, start, end):
     """Read branded vs non-branded GSC data from public Google Sheet (manually maintained).
     Columns: Week | Metrics | Brand | Non-Brand | Unclassified | Total | ...
@@ -1817,7 +1817,8 @@ if auth_method == 'demo':
     gsc_branded_df = pd.DataFrame(demo_branded)
 else:
     try:
-        raw = fetch_gsc_branded(full_start + full_end, config['gsc_site'], full_start, full_end)
+        import datetime as _dt
+        raw = fetch_gsc_branded(full_start + full_end + str(_dt.date.today()), config['gsc_site'], full_start, full_end)
         if raw.empty:
             st.info("No GSC query data available yet.")
             gsc_branded_df = pd.DataFrame()
@@ -1878,45 +1879,47 @@ if not gsc_branded_df.empty:
             margin=dict(t=60, b=60, l=40, r=20))
         st.plotly_chart(fig_impr, use_container_width=True)
 
-    # Pie charts — current week click & impression ratio
+    # Proportion bars — current week click & impression share
     cur_b_pie = gsc_branded_df[gsc_branded_df['Week_Idx'] == cur_idx]
     def _pie_val(t, col):
         r = cur_b_pie[cur_b_pie['Type'] == t]
         return int(r[col].sum()) if not r.empty else 0
 
-    pie_col1, pie_col2 = st.columns(2)
-    pie_labels = ['Branded', 'Non-branded', 'Unclassified']
-    pie_colors = ['#1a56db', '#ef4444', '#9ca3af']
+    pie_labels  = ['Branded', 'Non-branded', 'Unclassified']
+    pie_colors  = ['#1a56db', '#ef4444', '#9ca3af']
 
-    with pie_col1:
-        pie_clicks = [_pie_val(t, 'Clicks') for t in pie_labels]
-        fig_pc = go.Figure(go.Pie(
-            labels=pie_labels, values=pie_clicks,
-            marker=dict(colors=pie_colors),
-            textinfo='label+percent', hole=0.4,
-            hovertemplate='%{label}: %{value:,} clicks (%{percent})<extra></extra>'))
-        fig_pc.update_layout(
-            title='Share of Total Clicks — This Week', height=320,
-            font=dict(family='Inter', size=12),
-            legend=dict(orientation='h', y=-0.15),
-            margin=dict(t=50, b=40, l=20, r=20),
-            plot_bgcolor='white', paper_bgcolor='white')
-        st.plotly_chart(fig_pc, use_container_width=True)
+    def _prop_bar(title, values, unit):
+        total = sum(values)
+        if total == 0:
+            return
+        segments = ''
+        for lbl, val, col in zip(pie_labels, values, pie_colors):
+            pct = val / total * 100
+            if pct < 0.5:
+                continue
+            label_html = (
+                f'<span style="font-weight:700;font-size:13px;">{lbl}</span>'
+                f'<span style="font-size:12px;opacity:.85;"> {pct:.1f}%</span>'
+                f'<br><span style="font-size:11px;opacity:.75;">{val:,}</span>'
+            )
+            segments += (
+                f'<div style="width:{pct:.3f}%;background:{col};display:flex;'
+                f'align-items:center;justify-content:center;color:#fff;'
+                f'padding:0 6px;box-sizing:border-box;overflow:hidden;white-space:nowrap;">'
+                f'{label_html}</div>'
+            )
+        st.markdown(
+            f'<p style="font-weight:600;font-size:14px;margin:16px 0 8px 0;">{title}</p>'
+            f'<div style="display:flex;height:64px;border-radius:8px;overflow:hidden;'
+            f'box-shadow:0 1px 4px rgba(0,0,0,.08);">{segments}</div>'
+            f'<p style="font-size:12px;color:#6b7280;margin:4px 0 0 0;">Total: {total:,} {unit}</p>',
+            unsafe_allow_html=True)
 
-    with pie_col2:
-        pie_impr = [_pie_val(t, 'Impressions') for t in pie_labels]
-        fig_pi = go.Figure(go.Pie(
-            labels=pie_labels, values=pie_impr,
-            marker=dict(colors=pie_colors),
-            textinfo='label+percent', hole=0.4,
-            hovertemplate='%{label}: %{value:,} impressions (%{percent})<extra></extra>'))
-        fig_pi.update_layout(
-            title='Share of Total Impressions — This Week', height=320,
-            font=dict(family='Inter', size=12),
-            legend=dict(orientation='h', y=-0.15),
-            margin=dict(t=50, b=40, l=20, r=20),
-            plot_bgcolor='white', paper_bgcolor='white')
-        st.plotly_chart(fig_pi, use_container_width=True)
+    _prop_bar('Share of Total Clicks — This Week',
+              [_pie_val(t, 'Clicks') for t in pie_labels], 'clicks')
+    st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+    _prop_bar('Share of Total Impressions — This Week',
+              [_pie_val(t, 'Impressions') for t in pie_labels], 'impressions')
 
     # Summary table
     cur_b = gsc_branded_df[gsc_branded_df['Week_Idx'] == cur_idx]
